@@ -20,12 +20,30 @@ class AuthRequestCreate(BaseModel):
     metadata: Optional[dict] = Field(None, description="Дополнительные данные")
 
 
+# НОВАЯ СХЕМА: Создание запроса по номеру телефона
+class AuthRequestByPhoneCreate(BaseModel):
+    """Схема для создания запроса на авторизацию по номеру телефона"""
+    phone_number: str = Field(..., description="Номер телефона клиента")
+    operation: str = Field(..., description="Описание операции", max_length=255)
+    amount: Optional[str] = Field(None, description="Сумма операции")
+    metadata: Optional[dict] = Field(None, description="Дополнительные данные")
+
+
 class AuthRequestResponse(BaseModel):
     """Схема ответа при создании запроса"""
     request_id: str
     status: str
     created_at: str
     expires_at: Optional[str] = None
+
+
+# НОВАЯ СХЕМА: Ответ для незарегистрированных пользователей  
+class RegistrationRequiredResponse(BaseModel):
+    """Схема ответа когда требуется регистрация"""
+    status: str = "registration_required"
+    message: str
+    phone_number: str
+    client_id: Optional[str] = None
 
 
 class AuthStatusResponse(BaseModel):
@@ -53,6 +71,76 @@ class ClientRegister(BaseModel):
     email: Optional[str] = Field(None, max_length=100)
 
 
+# ========== НОВЫЙ ЭНДПОИНТ: Создание запроса по номеру телефона ==========
+
+@router.post("/auth/request-by-phone", response_model=AuthRequestResponse)
+async def create_auth_request_by_phone(
+    request: AuthRequestByPhoneCreate,
+    db: DatabaseDep,
+    _: ApiKeyDep
+):
+    """Создание запроса на авторизацию по номеру телефона"""
+    try:
+        # Ищем клиента по номеру телефона
+        client = await auth_service.get_client_by_phone(request.phone_number)
+        
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "client_not_found",
+                    "message": f"Клиент с номером {request.phone_number} не найден в базе",
+                    "phone_number": request.phone_number
+                }
+            )
+        
+        # Проверяем статус регистрации
+        if client['registration_status'] != 'completed':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "registration_required", 
+                    "message": f"Клиент с номером {request.phone_number} не завершил регистрацию в Telegram-боте",
+                    "phone_number": request.phone_number,
+                    "client_id": client['client_id']
+                }
+            )
+        
+        # Создаем запрос на авторизацию
+        request_id = await auth_service.create_auth_request(
+            client_id=client['client_id'],
+            telegram_id=client['telegram_id'],
+            operation=request.operation,
+            amount=request.amount,
+            metadata=request.metadata
+        )
+        
+        from app.config import settings
+        expires_at = datetime.now().timestamp() + settings.auth_request_timeout
+        
+        return AuthRequestResponse(
+            request_id=request_id,
+            status="pending",
+            created_at=datetime.now().isoformat(),
+            expires_at=datetime.fromtimestamp(expires_at).isoformat()
+        )
+        
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error creating auth request by phone: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+
 @router.post("/auth/request", response_model=AuthRequestResponse)
 async def create_auth_request(
     request: AuthRequestCreate,
@@ -74,6 +162,13 @@ async def create_auth_request(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Telegram ID does not match client info"
+            )
+        
+        # НОВАЯ ПРОВЕРКА: Статус регистрации
+        if client['registration_status'] != 'completed':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Client registration not completed"
             )
         
         # Создаем запрос на авторизацию
@@ -194,6 +289,35 @@ async def get_client(
         raise
     except Exception as e:
         logger.error(f"Error getting client: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+# НОВЫЙ ЭНДПОИНТ: Поиск клиента по номеру телефона
+@router.get("/client/by-phone/{phone_number}")
+async def get_client_by_phone(
+    phone_number: str,
+    db: DatabaseDep,
+    _: ApiKeyDep
+):
+    """Получение данных клиента по номеру телефона"""
+    try:
+        client = await auth_service.get_client_by_phone(phone_number)
+        
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client not found"
+            )
+        
+        return client
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting client by phone: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
