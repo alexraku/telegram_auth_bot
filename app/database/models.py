@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, BigInteger
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, BigInteger, Index
 from sqlalchemy.sql import func
 from app.database.database import Base
 
@@ -13,11 +13,23 @@ class Client(Base):
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
     username = Column(String(100), nullable=True)
-    phone = Column(String(20), nullable=True)
+    # new 07/08/25 begin
+    phone = Column(String(20), nullable=True, index=True)  # Теперь с индексом!
     email = Column(String(100), nullable=True)
+    registration_status = Column(String(20), default='pending', nullable=False)  # pending, completed
+    # new 07/08/25 end ----------------
+    # before_begin
+    # phone = Column(String(20), nullable=True)
+    # email = Column(String(100), nullable=True)
+    # before_end -----------------
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Добавляем составной индекс для оптимизации запросов
+    __table_args__ = (
+        Index('idx_client_phone_active', 'phone', 'is_active'),
+    )
 
 
 class AuthRequest(Base):
