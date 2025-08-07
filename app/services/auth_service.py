@@ -38,8 +38,24 @@ class AuthService:
         try:
             # Нормализуем номер телефона (убираем +, пробелы, скобки)
             normalized_phone = self._normalize_phone(phone_number)
+            print(f"{phone_number=}, {normalized_phone=}")
             
             async with async_session() as db:
+                
+                # debug find by phone num begin
+                tmp = select(Client).where(
+                        or_(
+                            Client.phone == phone_number,
+                            Client.phone == normalized_phone,
+                            Client.phone == f"+{normalized_phone}"
+                        )
+                    )
+                from sqlalchemy.dialects import postgresql
+                compiled = tmp.compile(dialect=postgresql.dialect(), compile_kwargs={'literal_linds': True})
+                print(f"{str(compiled)=}")
+                
+                # debug find by phone num end ----------
+                
                 result = await db.execute(
                     select(Client).where(
                         or_(
