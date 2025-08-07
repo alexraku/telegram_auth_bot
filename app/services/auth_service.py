@@ -7,13 +7,145 @@ from loguru import logger
 from app.services.redis_service import redis_service
 from app.database.database import async_session
 from app.database.models import AuthRequest, Client
-# from app.bot.handlers import send_auth_request_to_user
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AuthService:
     """Сервис для работы с авторизацией клиентов"""
+    
+    # ========== НОВЫЕ МЕТОДЫ ДЛЯ РЕГИСТРАЦИИ ==========
+    
+    async def is_user_registered(self, telegram_id: int) -> bool:
+        """Проверка, зарегистрирован ли пользователь"""
+        try:
+            async with async_session() as db:
+                result = await db.execute(
+                    select(Client).where(
+                        Client.telegram_id == telegram_id,
+                        Client.is_active == True,
+                        Client.registration_status == 'completed'
+                    )
+                )
+                client = result.scalar_one_or_none()
+                return client is not None
+        except Exception as e:
+            logger.error(f"Error checking user registration: {e}")
+            return False
+    
+    async def get_client_by_phone(self, phone_number: str) -> Optional[Dict[str, Any]]:
+        """Получение клиента по номеру телефона"""
+        try:
+            # Нормализуем номер телефона (убираем +, пробелы, скобки)
+            normalized_phone = self._normalize_phone(phone_number)
+            
+            async with async_session() as db:
+                result = await db.execute(
+                    select(Client).where(
+                        or_(
+                            Client.phone == phone_number,
+                            Client.phone == normalized_phone,
+                            Client.phone == f"+{normalized_phone}"
+                        )
+                    )
+                )
+                client = result.scalar_one_or_none()
+                
+                if client:
+                    return {
+                        'client_id': client.client_id,
+                        'telegram_id': client.telegram_id,
+                        'phone': client.phone,
+                        'first_name': client.first_name,
+                        'last_name': client.last_name,
+                        'username': client.username,
+                        'email': client.email,
+                        'is_active': client.is_active,
+                        'registration_status': client.registration_status,
+                        'created_at': client.created_at.isoformat() if client.created_at else None
+                    }
+                return None
+        except Exception as e:
+            logger.error(f"Error getting client by phone: {e}")
+            return None
+    
+    async def complete_phone_registration(
+        self,
+        phone_number: str,
+        telegram_id: int,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        username: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Завершение регистрации пользователя по номеру телефона"""
+        try:
+            normalized_phone = self._normalize_phone(phone_number)
+            
+            # Ищем существующего клиента в базе 1С
+            existing_client = await self.get_client_by_phone(phone_number)
+            
+            if not existing_client:
+                return {
+                    'success': False,
+                    'error': 'phone_not_found',
+                    'message': 'Номер телефона не найден в базе клиентов'
+                }
+            
+            # Проверяем, не зарегистрирован ли уже этот telegram_id
+            async with async_session() as db:
+                existing_telegram = await db.execute(
+                    select(Client).where(Client.telegram_id == telegram_id)
+                )
+                if existing_telegram.scalar_one_or_none():
+                    return {
+                        'success': False,
+                        'error': 'telegram_already_registered',
+                        'message': 'Этот Telegram аккаунт уже привязан к другому клиенту'
+                    }
+                
+                # Обновляем существующего клиента
+                await db.execute(
+                    update(Client)
+                    .where(Client.client_id == existing_client['client_id'])
+                    .values(
+                        telegram_id=telegram_id,
+                        first_name=first_name,
+                        last_name=last_name,
+                        username=username,
+                        registration_status='completed',
+                        updated_at=datetime.now()
+                    )
+                )
+                await db.commit()
+                
+                logger.info(f"Client {existing_client['client_id']} registered with Telegram ID {telegram_id}")
+                
+                return {
+                    'success': True,
+                    'client_id': existing_client['client_id'],
+                    'message': 'Регистрация успешно завершена'
+                }
+                
+        except Exception as e:
+            logger.error(f"Error completing phone registration: {e}")
+            return {
+                'success': False,
+                'error': 'internal_error',
+                'message': 'Внутренняя ошибка сервиса'
+            }
+    
+    def _normalize_phone(self, phone: str) -> str:
+        """Нормализация номера телефона"""
+        # Убираем все символы кроме цифр
+        digits_only = ''.join(filter(str.isdigit, phone))
+        
+        # Если начинается с 8, меняем на 7 (для России)
+        if digits_only.startswith('8') and len(digits_only) == 11:
+            digits_only = '7' + digits_only[1:]
+            
+        return digits_only
+    
+    # ========== СУЩЕСТВУЮЩИЕ МЕТОДЫ (с модификациями) ==========
     
     async def create_auth_request(
         self,
@@ -26,6 +158,10 @@ class AuthService:
         """Создание запроса на авторизацию"""
         from app.bot.handlers import send_auth_request_to_user
         try:
+            # НОВАЯ ПРОВЕРКА: Пользователь должен быть зарегистрирован
+            if not await self.is_user_registered(telegram_id):
+                raise ValueError("Пользователь не зарегистрирован в системе")
+            
             # Проверяем лимит активных запросов
             pending_count = await redis_service.get_user_pending_requests_count(telegram_id)
             from app.config import settings
@@ -205,7 +341,8 @@ class AuthService:
                     username=username,
                     phone=phone,
                     email=email,
-                    is_active=True
+                    is_active=True,
+                    registration_status='completed',  # ИЗМЕНЕНИЕ: сразу completed
                 )
                 
                 db.add(client)
@@ -237,6 +374,7 @@ class AuthService:
                         'phone': client.phone,
                         'email': client.email,
                         'is_active': client.is_active,
+                        'registration_status': client.registration_status,  # ДОБАВЛЕНО
                         'created_at': client.created_at.isoformat() if client.created_at else None
                     }
                 
