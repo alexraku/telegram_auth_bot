@@ -41,3 +41,6 @@ up-admin:
 
 prod:
 	docker compose -f docker-compose.yml up -d --build --remove-orphans
+
+remove-data:
+	docker compose down -v
