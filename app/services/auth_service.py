@@ -7,7 +7,7 @@ from loguru import logger
 from app.services.redis_service import redis_service
 from app.database.database import async_session
 from app.database.models import AuthRequest, Client
-from sqlalchemy import select, update, or_
+from sqlalchemy import select, update, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -339,9 +339,15 @@ class AuthService:
             async with async_session() as db:
                 # Проверяем, существует ли клиент
                 existing = await db.execute(
-                    select(Client).where(
-                        (Client.client_id == client_id) | (Client.telegram_id == telegram_id)
-                    )
+                     select(Client).where(
+                         or_(
+                             Client.phone == phone,
+                             and_(
+                                 Client.telegram_id.isnot(None),
+                                 Client.telegram_id == telegram_id,
+                             )
+                         )
+                     )
                 )
                 
                 if existing.scalar_one_or_none():
@@ -365,11 +371,11 @@ class AuthService:
                 await db.commit()
                 
                 logger.info(f"Client {client_id} registered successfully")
-                return True
+                return client_id
                 
         except Exception as e:
             logger.error(f"Error registering client: {e}")
-            return False
+            return None
     
     async def get_client_by_id(self, client_id: str) -> Optional[Dict[str, Any]]:
         """Получение данных клиента по ID"""

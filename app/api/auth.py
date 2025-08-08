@@ -1,8 +1,11 @@
+import uuid
+
 from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from loguru import logger
+from uuid import UUID, uuid4
 
 from app.api.dependencies import DatabaseDep, ApiKeyDep
 from app.services.auth_service import auth_service
@@ -62,7 +65,7 @@ class AuthStatusResponse(BaseModel):
 
 class ClientRegister(BaseModel):
     """Схема для регистрации клиента"""
-    client_id: str = Field(..., description="ID клиента в системе")
+    client_id: UUID = Field(default_factory=uuid4, description="ID клиента в системе")
     telegram_id: int = Field(..., description="Telegram ID пользователя")
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
@@ -239,8 +242,9 @@ async def register_client(
 ):
     """Регистрация нового клиента"""
     try:
+        client_id = uuid.uuid4()
         success = await auth_service.register_client(
-            client_id=client.client_id,
+            client_id=client_id,
             telegram_id=client.telegram_id,
             first_name=client.first_name,
             last_name=client.last_name,
