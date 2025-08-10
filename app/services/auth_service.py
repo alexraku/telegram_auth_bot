@@ -74,8 +74,8 @@ class AuthService:
                         'phone': client.phone,
                         'first_name': client.first_name,
                         'last_name': client.last_name,
-                        'username': client.username,
-                        'email': client.email,
+                        # 'username': client.username,
+                        # 'email': client.email,
                         'is_active': client.is_active,
                         'registration_status': client.registration_status,
                         'created_at': client.created_at.isoformat() if client.created_at else None
@@ -91,7 +91,7 @@ class AuthService:
         telegram_id: int,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
-        username: Optional[str] = None
+        # username: Optional[str] = None
     ) -> Dict[str, Any]:
         """Завершение регистрации пользователя по номеру телефона"""
         try:
@@ -127,7 +127,7 @@ class AuthService:
                         telegram_id=telegram_id,
                         first_name=first_name,
                         last_name=last_name,
-                        username=username,
+                        # username=username,
                         registration_status='completed',
                         updated_at=datetime.now()
                     )
@@ -327,12 +327,12 @@ class AuthService:
     async def register_client(
         self,
         client_id: str,
-        telegram_id: int,
+        telegram_id: int | None = None,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
-        username: Optional[str] = None,
+        # username: Optional[str] = None,
         phone: Optional[str] = None,
-        email: Optional[str] = None
+        # email: Optional[str] = None
     ) -> bool:
         """Регистрация нового клиента"""
         try:
@@ -360,9 +360,9 @@ class AuthService:
                     telegram_id=telegram_id,
                     first_name=first_name,
                     last_name=last_name,
-                    username=username,
+                    # username=username,
                     phone=phone,
-                    email=email,
+                    # email=email,
                     is_active=True,
                     registration_status='completed',  # ИЗМЕНЕНИЕ: сразу completed
                 )
@@ -392,9 +392,9 @@ class AuthService:
                         'telegram_id': client.telegram_id,
                         'first_name': client.first_name,
                         'last_name': client.last_name,
-                        'username': client.username,
+                        # 'username': client.username,
                         'phone': client.phone,
-                        'email': client.email,
+                        # 'email': client.email,
                         'is_active': client.is_active,
                         'registration_status': client.registration_status,  # ДОБАВЛЕНО
                         'created_at': client.created_at.isoformat() if client.created_at else None

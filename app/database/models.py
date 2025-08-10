@@ -9,13 +9,13 @@ class Client(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     client_id = Column(String(100), unique=True, index=True, nullable=False)
-    telegram_id = Column(BigInteger, unique=True, index=True, nullable=False)
+    telegram_id = Column(BigInteger, unique=True, index=True, nullable=True)
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
-    username = Column(String(100), nullable=True)
+    # email = Column(String(100), nullable=True) not needed for MVP
+    # username = Column(String(100), nullable=True) not needed for MVP
     # new 07/08/25 begin
     phone = Column(String(20), nullable=True, index=True)  # Теперь с индексом!
-    email = Column(String(100), nullable=True)
     registration_status = Column(String(20), default='pending', nullable=False)  # pending, completed
     # new 07/08/25 end ----------------
     # before_begin

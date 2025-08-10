@@ -66,12 +66,12 @@ class AuthStatusResponse(BaseModel):
 class ClientRegister(BaseModel):
     """Схема для регистрации клиента"""
     client_id: UUID = Field(default_factory=uuid4, description="ID клиента в системе")
-    telegram_id: int = Field(..., description="Telegram ID пользователя")
+    telegram_id: Optional[int] = Field(None, description="Telegram ID пользователя")
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
-    username: Optional[str] = Field(None, max_length=100)
+    # username: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
-    email: Optional[str] = Field(None, max_length=100)
+    # email: Optional[str] = Field(None, max_length=100)
 
 
 # ========== НОВЫЙ ЭНДПОИНТ: Создание запроса по номеру телефона ==========
@@ -248,9 +248,9 @@ async def register_client(
             telegram_id=client.telegram_id,
             first_name=client.first_name,
             last_name=client.last_name,
-            username=client.username,
+            # username=client.username,
             phone=client.phone,
-            email=client.email
+            # email=client.email
         )
         
         if not success:

@@ -170,7 +170,7 @@ async def confirm_registration(callback: CallbackQuery):
         telegram_id=user.id,
         first_name=user.first_name,
         last_name=user.last_name,
-        username=user.username
+        # username=user.username
     )
     
     if registration_result['success']:
